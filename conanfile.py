@@ -2,61 +2,49 @@ from conans import ConanFile, CMake, tools
 import os
 
 
-class LibnameConan(ConanFile):
-    name = "libname"
-    description = "Keep it short"
-    topics = ("conan", "libname", "logging")
-    url = "https://github.com/bincrafters/conan-libname"
-    homepage = "https://github.com/original_author/original_lib"
-    license = "MIT"  # Indicates license type of the packaged library; please use SPDX Identifiers https://spdx.org/licenses/
-    exports_sources = ["CMakeLists.txt"]
-    generators = "cmake"
-
-    settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "fPIC": [True, False]}
-    default_options = {"shared": False, "fPIC": True}
-
-    _source_subfolder = "source_subfolder"
-    _build_subfolder = "build_subfolder"
-    _cmake = None
-
-    requires = (
-        "zlib/1.2.11"
-    )
-
-    def config_options(self):
-        if self.settings.os == 'Windows':
-            del self.options.fPIC
+class FaissConan(ConanFile):
+    name = "faiss"
+    version = "1.6.3"
+    url = "https://github.com/facebookresearch/faiss"
+    license = "https://github.com/facebookresearch/faiss/blob/master/LICENSE"
+    description = "A library for efficient similarity search and clustering of dense vectors."
+    settings = "os", "compiler", "build_type", "arch"
+    exports = "CMakeLists.txt", "lib*.cmake", "extract_includes.bat.in", "protoc.cmake", "tests.cmake", "change_dylib_names.sh"
+    options = {"shared": [True, False], "without_cuda": [True, False], "cuda_path": "ANY", "cuda_arch": "ANY"}
+    default_options = {'shared': True, 'without_cuda': True, "cuda_path": "/path/to/cuda-10.1", "cuda_arch": "-gencode=arch=compute_75,code=sm_75 -gencode=arch=compute_72,code=sm_72"}
+    generators = "make"
+    _source_subfolder = "faiss"
 
     def source(self):
-        tools.get(**self.conan_data["sources"][self.version])
-        extracted_dir = self.name + "-" + self.version
-        os.rename(extracted_dir, self._source_subfolder)
-
-    def _configure_cmake(self):
-        if not self._cmake:
-            self._cmake = CMake(self)
-            self._cmake.definitions["BUILD_TESTS"] = False  # example
-            self._cmake.configure(build_folder=self._build_subfolder)
-        return self._cmake
+        source_folder = "faiss-{0}".format(self.version)
+        archive_name = "{0}.tar.gz".format(source_folder)
+        tools.download("https://github.com/facebookresearch/faiss/archive/v{0}.tar.gz".format(self.version), archive_name)
+        tools.untargz(archive_name)
+        os.rename(source_folder, self._source_subfolder)
 
     def build(self):
-        cmake = self._configure_cmake()
-        cmake.build()
+        with tools.chdir(self._source_subfolder):
+            self.run("chmod +x configure")
+
+            args = []
+            if self.options.without_cuda:
+                args += ['--without-cuda']
+            else:
+                args += ['--with-cuda=' + self.options.cuda_path]
+                args += ['--with-cuda-arch=' + self.options.cuda_arch]
+            
+            self.run("./configure %s" % (' '.join(args)))
+            cpus = tools.cpu_count()
+            self.run("make -j %s" % cpus)
 
     def package(self):
-        self.copy(pattern="LICENSE", dst="licenses", src=self._source_subfolder)
-        cmake = self._configure_cmake()
-        cmake.install()
-        # If the CMakeLists.txt has a proper install method, the steps below may be redundant
-        # If so, you can just remove the lines below
-        include_folder = os.path.join(self._source_subfolder, "include")
-        self.copy(pattern="*", dst="include", src=include_folder)
-        self.copy(pattern="*.dll", dst="bin", keep_path=False)
-        self.copy(pattern="*.lib", dst="lib", keep_path=False)
-        self.copy(pattern="*.a", dst="lib", keep_path=False)
-        self.copy(pattern="*.so*", dst="lib", keep_path=False)
-        self.copy(pattern="*.dylib", dst="lib", keep_path=False)
+        self.copy("*.h", dst="include", keep_path=True)
+        self.copy("*.hpp", dst="include", keep_path=True)
+        self.copy("*.lib", dst="lib", keep_path=False)
+        self.copy("*.dll", dst="bin", keep_path=False)
+        self.copy("*.so*", dst="lib", keep_path=False)
+        self.copy("*.dylib*", dst="lib", keep_path=False)
+        self.copy("*.a", dst="lib", keep_path=False)
 
     def package_info(self):
         self.cpp_info.libs = tools.collect_libs(self)

@@ -1,7 +1,9 @@
 #include <iostream>
+#include <faiss/IndexFlat.h>
 
 int main()
 {
-    std::cout << "Bincrafters\n";
+    faiss::IndexFlat _index;
+    std::cout << "Package test success!\n";
     return 0;
 }
